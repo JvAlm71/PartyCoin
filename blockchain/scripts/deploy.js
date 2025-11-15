@@ -1,6 +1,8 @@
 // blockchain/scripts/deploy.js
 const hre = require("hardhat");
-const { ethers } = require('hardhat');
+const { ethers, artifacts } = require("hardhat");
+const fs = require("fs");
+const path = require("path");
 
 /**
  * Função principal de deploy do contrato PartyCoin
@@ -25,40 +27,38 @@ async function main() {
   // Em testnet/mainnet: conta definida no hardhat.config.js
   const [deployer] = await ethers.getSigners();
   
-  console.log('\n=================================');
-  console.log('🚀 DEPLOYING PARTYCOIN');
-  console.log('=================================');
-  console.log('Deploying with account:', deployer.address);
-  
-  // Mostrar saldo
-  const balance = await ethers.provider.getBalance(deployer.address);
-  console.log('Account balance:', ethers.formatEther(balance), 'ETH');
-  
-  console.log('\nDeploying contract...');
+  console.log("\n=================================");
+  console.log("🚀 DEPLOYING PARTYCOIN");
+  console.log("Deployer:", deployer.address);
+  console.log("Network:", hre.network.name);
+  console.log("=================================\n");
+
   const PartyCoin = await ethers.getContractFactory('PartyCoin');
   const contract = await PartyCoin.deploy(deployer.address);
   await contract.waitForDeployment();
 
-  const contractAddress = await contract.getAddress();
-  
-  console.log('\n✅ PartyCoin deployed successfully!');
-  console.log('=================================');
-  console.log('Contract address:', contractAddress);
-  console.log('Network:', hre.network.name);
-  console.log('Chain ID:', hre.network.config.chainId);
-  console.log('=================================\n');
-  
-  // Mostrar supply inicial
+  const address = await contract.getAddress();
+  console.log("✅ Deployed at:", address, "\n");
+
+  // Grava o endereço para o frontend (Vite pode importar JSON)
+  const frontendSrc = path.join(__dirname, "../../frontend/src");
+  const outPath = path.join(frontendSrc, "contract-address.json");
+  fs.writeFileSync(outPath, JSON.stringify({ PartyCoin: address }, null, 2));
+  console.log("📝 Frontend atualizado:", outPath);
+
+  // Exporta ABI atualizado para o frontend
+  const artifact = await artifacts.readArtifact("PartyCoin");
+  const abiDir = path.join(frontendSrc, "artifacts", "contracts", "PartyCoin.sol");
+  fs.mkdirSync(abiDir, { recursive: true });
+  fs.writeFileSync(path.join(abiDir, "PartyCoin.json"), JSON.stringify(artifact, null, 2));
+  console.log("🧩 ABI copiado para o frontend.\n");
+
   const totalSupply = await contract.totalSupply();
-  console.log('Total Supply:', ethers.formatEther(totalSupply), 'PRTY');
-  console.log('Owner:', deployer.address);
-  
-  console.log('\n📋 COPIE ESTE ENDEREÇO PARA O FRONTEND:');
-  console.log(contractAddress);
-  console.log('=================================\n');
+  console.log("Total Supply:", ethers.formatEther(totalSupply), "PRTY");
+  console.log("\n📋 Endereço para uso no frontend:", address);
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch((e) => {
+  console.error(e);
   process.exitCode = 1;
 });

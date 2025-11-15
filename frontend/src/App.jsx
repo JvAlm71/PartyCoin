@@ -2,11 +2,19 @@ import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import PartyCoinABI from './artifacts/contracts/PartyCoin.sol/PartyCoin.json';
 import './App.css';
+import contractAddress from './contract-address.json'; // ← gerado pelo deploy
 
-// COLE O ENDEREÇO QUE APARECEU NO DEPLOY AQUI
-const CONTRACT_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3'; 
+// Endereço do contrato vindo do JSON gerado pelo script de deploy
+const CONTRACT_ADDRESS = contractAddress.PartyCoin;
 
-
+// Parâmetros da rede local do Hardhat (31337)
+const HARDHAT_PARAMS = {
+  chainId: '0x7a69',
+  chainName: 'Hardhat Local',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: ['http://127.0.0.1:8545'],
+  blockExplorerUrls: []
+};
 
 function App() {
   const [account, setAccount] = useState('');
@@ -14,39 +22,70 @@ function App() {
   const [contract, setContract] = useState(null);
   const [loading, setLoading] = useState(false);
   const [network, setNetwork] = useState('');
+  const [error, setError] = useState('');
 
   // Conectar carteira MetaMask
   async function connectWallet() {
+    setError('');
     if (typeof window.ethereum === 'undefined') {
       alert('Por favor, instale o MetaMask!\nhttps://metamask.io');
       return;
     }
 
     try {
-      // Solicitar conexão
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts',
-      });
+      // Garantir rede 31337
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: HARDHAT_PARAMS.chainId }]
+        });
+      } catch (e) {
+        if (e.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [HARDHAT_PARAMS]
+          });
+        } else {
+          throw e;
+        }
+      }
+
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       setAccount(accounts[0]);
 
       const provider = new ethers.BrowserProvider(window.ethereum);
       const net = await provider.getNetwork();
-      setNetwork(net.name);
+      setNetwork(net.chainId === 31337n ? 'Hardhat Local' : net.name);
+
+      if (net.chainId !== 31337n) {
+        setError('Troque para a rede Hardhat Local (31337).');
+        return;
+      }
+
+      // Checar se há bytecode no endereço do contrato
+      const code = await provider.getCode(CONTRACT_ADDRESS);
+      if (code === '0x') {
+        setError(`Contrato não encontrado no endereço ${CONTRACT_ADDRESS} na rede 31337. Faça o deploy novamente.`);
+        return;
+      }
 
       const signer = await provider.getSigner();
-      const contractInstance = new ethers.Contract(
-        CONTRACT_ADDRESS,
-        PartyCoinABI.abi,
-        signer
-      );
+      const contractInstance = new ethers.Contract(CONTRACT_ADDRESS, PartyCoinABI.abi, signer);
+
+      // Chamada simples para validar a ABI
+      await contractInstance.totalSupply();
+
       setContract(contractInstance);
 
-      // Buscar saldo
       const bal = await contractInstance.balanceOf(accounts[0]);
       setBalance(ethers.formatEther(bal));
     } catch (error) {
       console.error('Erro ao conectar:', error);
-      alert('Erro: ' + error.message);
+      const msg = error.code === 'BAD_DATA'
+        ? 'Contrato/ABI inválidos para este endereço. Faça o deploy e atualize o frontend.'
+        : (error.message || 'Erro desconhecido.');
+      setError(msg);
+      alert('Erro: ' + msg);
     }
   }
 
@@ -96,6 +135,19 @@ function App() {
     }
   }
 
+  // Reagir a trocas de rede/conta no MetaMask
+  useEffect(() => {
+    if (!window.ethereum) return;
+    const handleChainChanged = () => window.location.reload();
+    const handleAccountsChanged = (accs) => setAccount(accs[0] || '');
+    window.ethereum.on('chainChanged', handleChainChanged);
+    window.ethereum.on('accountsChanged', handleAccountsChanged);
+    return () => {
+      window.ethereum.removeListener('chainChanged', handleChainChanged);
+      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+    };
+  }, []);
+
   return (
     <div className="App">
       <h1>🎉 PartyCoin (PRTY)</h1>
@@ -136,6 +188,12 @@ function App() {
           >
             {loading ? '⏳ Processando...' : '📤 Transferir Tokens'}
           </button>
+        </div>
+      )}
+
+      {error && (
+        <div style={{background: 'rgba(255,0,0,0.15)', border: '1px solid #ff4d4f', color: '#fff', padding: '10px', borderRadius: 8, marginBottom: 16}}>
+          {error}
         </div>
       )}
 
