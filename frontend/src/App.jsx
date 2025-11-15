@@ -24,7 +24,6 @@ function App() {
   const [network, setNetwork] = useState('');
   const [error, setError] = useState('');
 
-  // Conectar carteira MetaMask
   async function connectWallet() {
     setError('');
     if (typeof window.ethereum === 'undefined') {
@@ -33,7 +32,6 @@ function App() {
     }
 
     try {
-      // Garantir rede 31337
       try {
         await window.ethereum.request({
           method: 'wallet_switchEthereumChain',
@@ -89,7 +87,6 @@ function App() {
     }
   }
 
-  // Atualizar saldo automaticamente
   useEffect(() => {
     if (contract && account) {
       const interval = setInterval(async () => {
@@ -99,7 +96,7 @@ function App() {
         } catch (err) {
           console.error(err);
         }
-      }, 3000); // atualiza a cada 3s
+      }, 3000); 
 
       return () => clearInterval(interval);
     }
